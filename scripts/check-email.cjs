@@ -1,0 +1,61 @@
+// Route integration checks with isolated SQLite storage and a fake mail transport.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const Module = require('node:module');
+const ts = require('typescript');
+const Database = require('better-sqlite3');
+const db = new Database(':memory:');
+const source = fs.readFileSync('src/lib/db.ts', 'utf8');
+db.exec(source.match(/db\.exec\(`([\s\S]*?)`\)/)[1]);
+let sent = [], sessions = [], fail = false;
+function load(file) {
+  const m = new Module(file, module);
+  m.filename = file; m.paths = module.paths;
+  const original = m.require.bind(m);
+  m.require = id => {
+    if (id === '@/lib/db') return { db: () => db };
+    if (id === '@/lib/emailTemplates') return load('src/lib/emailTemplates.ts');
+    if (id === '@/lib/auth') return { createSession: async user => sessions.push(user) };
+    if (id === '@/lib/mail') return { sendMail: async (...args) => { if (fail) throw Error('offline'); sent.push(args); } };
+    return original(id);
+  };
+  m._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020 } }).outputText, file);
+  return m.exports.POST || m.exports;
+}
+const register = load('src/app/api/auth/register/route.ts');
+const verify = load('src/app/api/auth/verify/route.ts');
+const newsletter = load('src/app/api/newsletter/route.ts');
+const request = body => new Request('http://localhost', { method: 'POST', body: JSON.stringify(body) });
+(async () => {
+  const user = { name: 'Test Customer', email: 'test@example.com', password: 'Testing123!' };
+  assert.equal((await register(request(user))).status, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, 0);
+  assert.equal((await register(request(user))).status, 429);
+  const code = sent[0][2].match(/\b\d{6}\b/)[0];
+  assert.ok(sent[0][3].includes(code));
+  assert.ok(sent[0][3].includes('YOUR VERIFICATION CODE'));
+  assert.equal((await verify(request({ email: user.email, code: 'wrong' }))).status, 400);
+  assert.equal((await verify(request({ email: user.email, code }))).status, 200);
+  assert.equal(sessions.length, 1);
+  assert.equal((await verify(request({ email: user.email, code }))).status, 400);
+  assert.equal((await register(request(user))).status, 409);
+  const locked = { ...user, email: 'locked@example.com' };
+  await register(request(locked));
+  const lockedCode = sent.at(-1)[2].match(/\b\d{6}\b/)[0];
+  for (let i = 0; i < 5; i++) await verify(request({ email: locked.email, code: 'bad' }));
+  assert.equal((await verify(request({ email: locked.email, code: lockedCode }))).status, 400);
+  db.prepare('UPDATE registration_codes SET attempts=0, expires_at=0 WHERE email=?').run(locked.email);
+  assert.equal((await verify(request({ email: locked.email, code: lockedCode }))).status, 400);
+  assert.equal((await newsletter(request({ email: 'news@example.com' }))).status, 200);
+  assert.ok(sent.at(-1)[3].includes('Good tech.'));
+  const count = sent.length;
+  assert.equal((await newsletter(request({ email: 'news@example.com' }))).status, 200);
+  assert.equal(sent.length, count);
+  fail = true;
+  assert.equal((await newsletter(request({ email: 'failed@example.com' }))).status, 503);
+  assert.equal(db.prepare('SELECT 1 FROM subscribers WHERE email=?').get('failed@example.com'), undefined);
+  assert.equal((await register(request({ ...user, email: 'failed@example.com' }))).status, 503);
+  assert.equal(db.prepare('SELECT 1 FROM registration_codes WHERE email=?').get('failed@example.com'), undefined);
+  db.close();
+  console.log('Passed: verification, cooldown, attempt limit, expiry, replay protection, newsletter deduplication and email failure handling.');
+})().catch(error => { console.error(error); process.exitCode = 1; });

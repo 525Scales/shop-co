@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { --ink: #0d0d0d; --paper: #f0eeed; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { @apply bg-white text-ink antialiased font-sans; }
+.font-display { font-stretch: 125%; font-weight: 900; text-transform: uppercase; letter-spacing: -0.01em; line-height: 1; }
+.container-x { @apply mx-auto w-full max-w-[1240px] px-4 md:px-6 lg:px-8; }
+.pill { @apply inline-flex items-center justify-center gap-2 rounded-full px-8 py-3.5 text-[15px] font-medium transition-[transform,background-color,color] duration-300 active:scale-[0.98] active:-translate-y-px disabled:opacity-50 disabled:pointer-events-none; }
+.pill-dark { @apply bg-ink text-white hover:bg-zinc-800; }
+.pill-light { @apply bg-white text-ink ring-1 ring-black/10 hover:bg-zinc-100; }
+.field { @apply w-full rounded-full bg-paper px-5 py-3.5 text-[15px] outline-none ring-1 ring-transparent transition focus:ring-ink/40 placeholder:text-black/40; }
+.field-sq { @apply w-full rounded-2xl bg-paper px-4 py-3 text-[15px] outline-none ring-1 ring-transparent transition focus:ring-ink/40 placeholder:text-black/40; }
+.label { @apply mb-2 block text-sm font-medium; }
+.err { @apply mt-1.5 text-sm text-sale; }
+.skeleton { @apply relative overflow-hidden bg-paper; }
+.skeleton::after { content: ""; @apply absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+input[type="range"].rng { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 9999px; background: #e5e5e5; outline: none; width: 100%; }
+input[type="range"].rng::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 9999px; background: var(--ink); cursor: pointer; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
+input[type="range"].rng::-moz-range-thumb { width: 16px; height: 16px; border-radius: 9999px; background: var(--ink); cursor: pointer; border: 3px solid #fff; }
